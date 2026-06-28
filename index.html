@@ -677,11 +677,6 @@ function addLongPress(el,cb){
 
 // ── CONFIG ──
 const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwZ4Yq5-eITZ85ZGQx_Pe2HMzJ6k3B6GwUjXUzCBiyNc-4SNELRK502YZcmw50jwIQB/exec';
-const ICAL_URLS = [
-  'https://calendar.google.com/calendar/ical/godartalexandraa%40gmail.com/private-6eebf7c69827f1d9ff8a94ecfd92cf03/basic.ics',
-  'https://calendar.google.com/calendar/ical/843ebddbecf100f2b5ae83a5d87ac1339ac7e4145dc65b429aa1b4eb6d53e041%40group.calendar.google.com/private-5bd75ea9ad1d176d616233aae5af4806/basic.ics'
-];
-const ICAL_PROXY = 'https://api.allorigins.win/get?url=';
 
 // ── SAVE / LOAD (Sheets + localStorage) ──
 async function autoSave(){
@@ -750,40 +745,19 @@ function saveCats(){
   } catch(e){}
 }
 
-// ── GOOGLE AGENDA (iCal) ──
+// ── GOOGLE AGENDA (via Apps Script) ──
 let agendaEvents = [];
 
 async function loadAgenda(){
   agendaEvents = [];
-  const today = dateKey(sel);
-  for(const url of ICAL_URLS){
-    try {
-      const r = await fetch(ICAL_PROXY + encodeURIComponent(url));
-      const j = await r.json();
-      const events = parseIcal(j.contents, today);
-      agendaEvents.push(...events);
-    } catch(e){}
-  }
-  agendaEvents.sort((a,b)=>a.start.localeCompare(b.start));
+  const container = document.getElementById('agendaList');
+  if(container) container.innerHTML='<div style="font-size:13px;color:var(--text-xlight);">Chargement…</div>';
+  try {
+    const r = await fetch(APPS_SCRIPT_URL+'?action=getAgenda&date='+dateKey(sel));
+    const events = await r.json();
+    agendaEvents = events || [];
+  } catch(e){ agendaEvents = []; }
   renderAgenda();
-}
-
-function parseIcal(text, targetDate){
-  const events = [];
-  const blocks = text.split('BEGIN:VEVENT');
-  for(let i=1;i<blocks.length;i++){
-    const b = blocks[i];
-    const summary = (b.match(/SUMMARY:(.+)/)?.[1]||'').trim().replace(/\\n/g,' ');
-    const dtstart = b.match(/DTSTART[^:]*:(\d+)/)?.[1]||'';
-    const dtend = b.match(/DTEND[^:]*:(\d+)/)?.[1]||'';
-    if(!dtstart) continue;
-    const evDate = dtstart.slice(0,4)+'-'+dtstart.slice(4,6)+'-'+dtstart.slice(6,8);
-    if(evDate !== targetDate) continue;
-    const isAllDay = dtstart.length === 8;
-    const startTime = isAllDay ? '' : dtstart.slice(9,11)+':'+dtstart.slice(11,13);
-    events.push({summary, start:startTime, allDay:isAllDay});
-  }
-  return events;
 }
 
 function renderAgenda(){
