@@ -406,8 +406,17 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 
 <script>
 // ── GARDE ──
-const GARDE_REF=new Date(2026,5,26);
-function getWeekStart(d){const r=new Date(d);const day=r.getDay();r.setDate(r.getDate()+(day===0?-6:1-day));r.setHours(0,0,0,0);return r;}
+// Semaines de garde : vendredi → jeudi
+// Référence : 26 juin 2026 = semaine Alex (vendredi 26 juin au jeudi 2 juillet)
+const GARDE_REF=new Date(2026,5,26); // vendredi 26 juin
+function getWeekStart(d){
+  const r=new Date(d); r.setHours(0,0,0,0);
+  // 5=vendredi. On recule au vendredi précédent (ou jour même si vendredi)
+  const day=r.getDay(); // 0=dim,1=lun,...,5=ven,6=sam
+  const diff = (day>=5) ? (day-5) : (day+2); // jours depuis le vendredi
+  r.setDate(r.getDate()-diff);
+  return r;
+}
 function isAlexWeek(d){return Math.round((getWeekStart(d)-getWeekStart(GARDE_REF))/(7*864e5))%2===0;}
 
 // ── DATE ──
@@ -423,8 +432,8 @@ function renderHeader(){
   document.getElementById('dayNumber').textContent=sel.getDate();
   document.getElementById('monthYear').textContent=MF[sel.getMonth()].toLowerCase()+' '+sel.getFullYear();
   const p=document.getElementById('gardePill');
-  if(isAlexWeek(sel)){p.textContent='🌿 Ma semaine';p.className='garde-pill ma';}
-  else{p.textContent='🌸 Semaine papa';p.className='garde-pill papa';}
+  if(isAlexWeek(sel)){p.textContent='🌸 Ma semaine';p.className='garde-pill ma';}
+  else{p.textContent='🌿 Semaine papa';p.className='garde-pill papa';}
 }
 
 function renderNavDays(){
