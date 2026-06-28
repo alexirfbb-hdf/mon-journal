@@ -425,7 +425,10 @@ const DF=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
 const MF=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
 let sel=new Date(); sel.setHours(0,0,0,0);
 
-function dateKey(d){return d.toISOString().slice(0,10);}
+function dateKey(d){
+  const pad = n => String(n).padStart(2,'0');
+  return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+}
 
 function renderHeader(){
   document.getElementById('dayName').textContent=DF[sel.getDay()];
