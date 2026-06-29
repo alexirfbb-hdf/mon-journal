@@ -770,4 +770,44 @@ function renderTrackerPage(){
 // ── LONG PRESS ──
 function addLongPress(el,cb){
   let t;
-  el.addEventListener('touchstart',()=>{t=setTimeout(cb,500);},{passive:true
+  el.addEventListener('touchstart',()=>{t=setTimeout(cb,500);},{passive:true});
+  el.addEventListener('touchend',()=>clearTimeout(t));
+  el.addEventListener('touchmove',()=>clearTimeout(t));
+  el.addEventListener('mousedown',()=>{t=setTimeout(cb,500);});
+  el.addEventListener('mouseup',()=>clearTimeout(t));
+  el.addEventListener('mouseleave',()=>clearTimeout(t));
+}
+
+// ── NAV ──
+function showPage(name,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  if(btn)btn.classList.add('active');
+  if(name==='trackers')renderTrackerPage();
+  if(name==='taches'){
+    document.getElementById('taskDateInput').value=dateKey(sel);
+    renderAllTasks();
+  }
+}
+
+// ── MODAL ──
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+
+// ── TOAST ──
+function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
+
+// ── INIT ──
+renderHeader();
+renderNavDays();
+renderCal();
+renderWater();
+loadTrackers();
+loadAgenda();
+loadAllTasks();
+renderTodayTasks();
+loadCats();
+document.getElementById('taskDateInput').value=dateKey(sel);
+</script>
+</body>
+</html>
