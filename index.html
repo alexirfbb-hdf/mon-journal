@@ -479,7 +479,7 @@ function renderCal(){
   }
 }
 
-// ── TRACKERS (clé séparée: tracker_DATE) ──
+// ── TRACKERS ──
 let waterCount=0,sportDone=false,lectureDone=false;
 
 function renderWater(){
@@ -497,54 +497,71 @@ function toggleDone(type,btn){
 function saveTrackers(){
   const data={sleep:document.getElementById('sleepSlider').value,water:waterCount,sport:sportDone,lecture:lectureDone};
   localStorage.setItem('tracker_'+dateKey(sel),JSON.stringify(data));
-  // Sheets en arrière-plan
   try{
     const p=new URLSearchParams({action:'saveJournal',date:dateKey(sel),sleep:data.sleep,water:data.water,sport:data.sport,lecture:data.lecture});
     fetch(APPS_SCRIPT_URL+'?'+p.toString());
   }catch(e){}
 }
 
+function applyTrackerData(d){
+  if(!d) return;
+  if(d.sleep){document.getElementById('sleepSlider').value=d.sleep;document.getElementById('sleepVal').textContent=parseFloat(d.sleep)+'h';}
+  if(d.water){waterCount=Number(d.water);renderWater();}
+  if(d.sport==='true'||d.sport===true){sportDone=true;document.getElementById('sportBtn').textContent='✓';document.getElementById('sportBtn').classList.add('done');}
+  else{sportDone=false;document.getElementById('sportBtn').textContent='✗';document.getElementById('sportBtn').classList.remove('done');}
+  if(d.lecture==='true'||d.lecture===true){lectureDone=true;document.getElementById('lectureBtn').textContent='✓';document.getElementById('lectureBtn').classList.add('done');}
+  else{lectureDone=false;document.getElementById('lectureBtn').textContent='✗';document.getElementById('lectureBtn').classList.remove('done');}
+}
+
 function loadTrackers(){
+  // Reset
   waterCount=0;sportDone=false;lectureDone=false;
   document.getElementById('sleepSlider').value=7;
   document.getElementById('sleepVal').textContent='7h';
   renderWater();
   document.getElementById('sportBtn').textContent='✗';document.getElementById('sportBtn').classList.remove('done');
   document.getElementById('lectureBtn').textContent='✗';document.getElementById('lectureBtn').classList.remove('done');
-  // Charge depuis localStorage
+  // 1. Affiche localStorage immédiatement
   const raw=localStorage.getItem('tracker_'+dateKey(sel));
-  if(raw){
-    const d=JSON.parse(raw);
-    if(d.sleep){document.getElementById('sleepSlider').value=d.sleep;document.getElementById('sleepVal').textContent=parseFloat(d.sleep)+'h';}
-    if(d.water){waterCount=Number(d.water);renderWater();}
-    if(d.sport===true||d.sport==='true'){sportDone=true;document.getElementById('sportBtn').textContent='✓';document.getElementById('sportBtn').classList.add('done');}
-    if(d.lecture===true||d.lecture==='true'){lectureDone=true;document.getElementById('lectureBtn').textContent='✓';document.getElementById('lectureBtn').classList.add('done');}
-  }
-  // Sheets en arrière-plan
+  if(raw) applyTrackerData(JSON.parse(raw));
+  // 2. Charge depuis Sheets en arrière-plan et met à jour
   fetch(APPS_SCRIPT_URL+'?action=getJournal&date='+dateKey(sel))
     .then(r=>r.json()).then(d=>{
-      if(!d) return;
-      if(d.sleep){document.getElementById('sleepSlider').value=d.sleep;document.getElementById('sleepVal').textContent=parseFloat(d.sleep)+'h';}
-      if(d.water){waterCount=Number(d.water);renderWater();}
-      if(d.sport==='true'||d.sport===true){sportDone=true;document.getElementById('sportBtn').textContent='✓';document.getElementById('sportBtn').classList.add('done');}
-      if(d.lecture==='true'||d.lecture===true){lectureDone=true;document.getElementById('lectureBtn').textContent='✓';document.getElementById('lectureBtn').classList.add('done');}
+      if(!d||Object.keys(d).length===0) return;
+      applyTrackerData(d);
       localStorage.setItem('tracker_'+dateKey(sel),JSON.stringify(d));
     }).catch(()=>{});
 }
 
-// ── TÂCHES (clé: tasks_ALL — toutes les tâches dans un seul tableau) ──
+// ── TÂCHES ──
 let allTasks=[];
 let editTaskIdx=null,addPrio='red',editPrio='red',currentFilter='all';
 const prioLabels={red:'Urgent',orange:'Important',green:'Peut attendre'};
 
+// ★ FIX: charge depuis localStorage PUIS depuis Sheets si vide
 function loadAllTasks(){
   const raw=localStorage.getItem('tasks_ALL');
   allTasks=raw?JSON.parse(raw):[];
+  renderAllTasks();
+  renderTodayTasks();
+  // Charge depuis Sheets pour sync multi-appareils
+  fetch(APPS_SCRIPT_URL+'?action=getTaches')
+    .then(r=>r.json())
+    .then(d=>{
+      if(d&&Array.isArray(d)&&d.length>0){
+        // Garde la version Sheets si elle a plus de données ou si localStorage était vide
+        if(d.length>=allTasks.length){
+          allTasks=d;
+          localStorage.setItem('tasks_ALL',JSON.stringify(allTasks));
+          renderAllTasks();
+          renderTodayTasks();
+        }
+      }
+    }).catch(()=>{});
 }
 
 function saveAllTasks(){
   localStorage.setItem('tasks_ALL',JSON.stringify(allTasks));
-  // Sheets en arrière-plan — on sauvegarde toutes les tâches
   try{
     const tp=new URLSearchParams({action:'saveTaches',date:'all',tasks:encodeURIComponent(JSON.stringify(allTasks))});
     fetch(APPS_SCRIPT_URL+'?'+tp.toString());
@@ -589,9 +606,8 @@ function renderAllTasks(){
     container.innerHTML='<div class="empty-state">Aucune tâche ici 🌿</div>';
     return;
   }
-  // Grouper par date
   const groups={};
-  filtered.forEach((t,origIdx)=>{
+  filtered.forEach((t)=>{
     const d=t.date||dateKey(sel);
     if(!groups[d])groups[d]=[];
     groups[d].push({...t,origIdx:allTasks.indexOf(t)});
@@ -664,13 +680,20 @@ let cats=[];
 let editProjCatId=null,editProjItemIdx=null,editCatId=null,selectedEmoji='🎯';
 const EMOJIS=['🎬','📚','🛍️','🔨','🌿','✈️','🎵','💄','🍽️','💪','🎨','📝','🏠','🌸','⭐','🎯'];
 
+// ★ FIX: charge depuis localStorage PUIS depuis Sheets
 function loadCats(){
   const stored=localStorage.getItem('proj_cats');
   cats=stored?JSON.parse(stored):JSON.parse(JSON.stringify(DEFAULT_CATS));
-  fetch(APPS_SCRIPT_URL+'?action=getProjets').then(r=>r.json()).then(d=>{
-    if(d&&Array.isArray(d)&&d.length){cats=d;localStorage.setItem('proj_cats',JSON.stringify(cats));}
-    renderProjs();
-  }).catch(()=>renderProjs());
+  renderProjs(); // Affiche immédiatement ce qu'on a en local
+  fetch(APPS_SCRIPT_URL+'?action=getProjets')
+    .then(r=>r.json())
+    .then(d=>{
+      if(d&&Array.isArray(d)&&d.length>0){
+        cats=d;
+        localStorage.setItem('proj_cats',JSON.stringify(cats));
+        renderProjs();
+      }
+    }).catch(()=>{});
 }
 
 function saveCats(){
@@ -729,8 +752,13 @@ async function loadAgenda(){
   if(container)container.innerHTML='<div style="font-size:13px;color:var(--text-xlight);">Chargement…</div>';
   try{
     const r=await fetch(APPS_SCRIPT_URL+'?action=getAgenda&date='+dateKey(sel));
-    agendaEvents=await r.json()||[];
-  }catch(e){agendaEvents=[];}
+    if(!r.ok) throw new Error('HTTP '+r.status);
+    const data=await r.json();
+    agendaEvents=Array.isArray(data)?data:[];
+  }catch(e){
+    console.error('Agenda error:',e);
+    agendaEvents=[];
+  }
   renderAgenda();
 }
 function renderAgenda(){
@@ -804,9 +832,8 @@ renderCal();
 renderWater();
 loadTrackers();
 loadAgenda();
-loadAllTasks();
-renderTodayTasks();
-loadCats();
+loadAllTasks(); // ★ charge local + Sheets
+loadCats();     // ★ charge local + Sheets
 document.getElementById('taskDateInput').value=dateKey(sel);
 </script>
 </body>
