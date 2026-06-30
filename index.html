@@ -544,18 +544,15 @@ function loadAllTasks(){
   allTasks=raw?JSON.parse(raw):[];
   renderAllTasks();
   renderTodayTasks();
-  // Charge depuis Sheets pour sync multi-appareils
+  // Le Sheets est toujours la source de vérité
   fetch(APPS_SCRIPT_URL+'?action=getTaches')
     .then(r=>r.json())
     .then(d=>{
-      if(d&&Array.isArray(d)&&d.length>0){
-        // Garde la version Sheets si elle a plus de données ou si localStorage était vide
-        if(d.length>=allTasks.length){
-          allTasks=d;
-          localStorage.setItem('tasks_ALL',JSON.stringify(allTasks));
-          renderAllTasks();
-          renderTodayTasks();
-        }
+      if(d&&Array.isArray(d)){
+        allTasks=d;
+        localStorage.setItem('tasks_ALL',JSON.stringify(allTasks));
+        renderAllTasks();
+        renderTodayTasks();
       }
     }).catch(()=>{});
 }
