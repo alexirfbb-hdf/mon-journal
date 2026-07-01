@@ -443,10 +443,12 @@ function renderHeader(){
 function renderNavDays(){
   const nav=document.getElementById('navDays'); nav.innerHTML='';
   const today=new Date(); today.setHours(0,0,0,0);
-  for(let i=-3;i<=3;i++){
-    const d=new Date(today); d.setDate(today.getDate()+i);
+  const weekStart=getWeekStart(sel); // lundi de la semaine sélectionnée
+  for(let i=0;i<7;i++){
+    const d=new Date(weekStart); d.setDate(weekStart.getDate()+i);
     const btn=document.createElement('button');
     const hasEntry=!!localStorage.getItem('tracker_'+dateKey(d));
+    const isToday=d.getTime()===today.getTime();
     btn.className='nav-day'+(d.getTime()===sel.getTime()?' active':'')+(hasEntry?' has-entry':'');
     btn.innerHTML=`<span class="dl">${DL[d.getDay()]}</span><span class="dn">${d.getDate()}</span><span class="dd"></span>`;
     btn.onclick=()=>{sel=d;renderHeader();renderNavDays();renderCal();loadTrackers();loadAgenda();renderTodayTasks();};
