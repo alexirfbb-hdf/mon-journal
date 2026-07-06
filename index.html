@@ -431,6 +431,17 @@ let sel=new Date(); sel.setHours(0,0,0,0);
 function pad(n){return String(n).padStart(2,'0');}
 function dateKey(d){return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());}
 
+// ── CACHE DES DATES AVEC ENTRÉE JOURNAL (pour les points du calendrier) ──
+// Rempli au démarrage depuis le localStorage (rendu immédiat), puis rafraîchi
+// depuis Google Sheets via loadJournalDates() pour rester synchronisé entre appareils.
+let journalDatesSet=new Set();
+(function initJournalDatesCache(){
+  const cached=localStorage.getItem('journal_dates_cache');
+  if(cached){
+    try{ journalDatesSet=new Set(JSON.parse(cached)); }catch(e){}
+  }
+})();
+
 function renderHeader(){
   document.getElementById('dayName').textContent=DF[sel.getDay()];
   document.getElementById('dayNumber').textContent=sel.getDate();
@@ -447,7 +458,7 @@ function renderNavDays(){
   for(let i=0;i<7;i++){
     const d=new Date(weekStart); d.setDate(weekStart.getDate()+i);
     const btn=document.createElement('button');
-    const hasEntry=!!localStorage.getItem('tracker_'+dateKey(d));
+    const hasEntry=journalDatesSet.has(dateKey(d));
     const isToday=d.getTime()===today.getTime();
     btn.className='nav-day'+(d.getTime()===sel.getTime()?' active':'')+(hasEntry?' has-entry':'');
     btn.innerHTML=`<span class="dl">${DL[d.getDay()]}</span><span class="dn">${d.getDate()}</span><span class="dd"></span>`;
@@ -484,10 +495,27 @@ function renderCal(){
       if(isAlexWeek(d))cell.classList.add('garde-alex'); else cell.classList.add('garde-papa');
       if(d.getTime()===today.getTime())cell.classList.add('today');
       if(d.getTime()===sel.getTime()&&d.getTime()!==today.getTime())cell.classList.add('selected');
-      if(localStorage.getItem('tracker_'+dateKey(d)))cell.classList.add('has-entry');
+      if(journalDatesSet.has(dateKey(d)))cell.classList.add('has-entry');
       cell.onclick=()=>{sel=new Date(calYear,calMonth,dayNum);sel.setHours(0,0,0,0);renderHeader();renderNavDays();renderCal();loadTrackers();loadAgenda();renderTodayTasks();};
     }
     grid.appendChild(cell);
+  }
+}
+
+// Récupère depuis Google Sheets la liste des dates ayant une entrée journal.
+// Met à jour journalDatesSet + le cache local, puis rafraîchit les points affichés.
+async function loadJournalDates(){
+  try{
+    const r=await fetch(APPS_SCRIPT_URL+'?action=getAllJournalDates');
+    const dates=await r.json();
+    if(Array.isArray(dates)){
+      journalDatesSet=new Set(dates);
+      localStorage.setItem('journal_dates_cache',JSON.stringify(dates));
+      renderNavDays();
+      renderCal();
+    }
+  }catch(e){
+    console.error('Erreur chargement dates journal', e);
   }
 }
 
@@ -509,6 +537,11 @@ function toggleDone(type,btn){
 function saveTrackers(){
   const data={sleep:document.getElementById('sleepSlider').value,water:waterCount,sport:sportDone,lecture:lectureDone};
   localStorage.setItem('tracker_'+dateKey(sel),JSON.stringify(data));
+  // Le jour courant a maintenant une entrée : on met à jour le point tout de suite,
+  // sans attendre le prochain fetch de loadJournalDates().
+  journalDatesSet.add(dateKey(sel));
+  renderNavDays();
+  renderCal();
   // Sheets en arrière-plan
   try{
     const p=new URLSearchParams({action:'saveJournal',date:dateKey(sel),sleep:data.sleep,water:data.water,sport:data.sport,lecture:data.lecture});
@@ -532,7 +565,7 @@ function loadTrackers(){
     if(d.sport===true||d.sport==='true'){sportDone=true;document.getElementById('sportBtn').textContent='✓';document.getElementById('sportBtn').classList.add('done');}
     if(d.lecture===true||d.lecture==='true'){lectureDone=true;document.getElementById('lectureBtn').textContent='✓';document.getElementById('lectureBtn').classList.add('done');}
   }
-  // Sheets en arrière-plan
+  // Sheets en arrière-plan (source de vérité, écrase le cache local si différent)
   fetch(APPS_SCRIPT_URL+'?action=getJournal&date='+dateKey(sel))
     .then(r=>r.json()).then(d=>{
       if(!d) return;
@@ -541,6 +574,9 @@ function loadTrackers(){
       if(d.sport==='true'||d.sport===true){sportDone=true;document.getElementById('sportBtn').textContent='✓';document.getElementById('sportBtn').classList.add('done');}
       if(d.lecture==='true'||d.lecture===true){lectureDone=true;document.getElementById('lectureBtn').textContent='✓';document.getElementById('lectureBtn').classList.add('done');}
       localStorage.setItem('tracker_'+dateKey(sel),JSON.stringify(d));
+      journalDatesSet.add(dateKey(sel));
+      renderNavDays();
+      renderCal();
     }).catch(()=>{});
 }
 
@@ -549,9 +585,28 @@ let allTasks=[];
 let editTaskIdx=null,addPrio='red',editPrio='red',currentFilter='all';
 const prioLabels={red:'Urgent',orange:'Important',green:'Peut attendre'};
 
-function loadAllTasks(){
+// Charge les tâches : affichage immédiat depuis le cache local, puis la version
+// serveur (Google Sheets) fait foi et remplace ce cache dès qu'elle arrive.
+// C'est ce qui manquait avant : sans ce fetch, chaque appareil ne voyait que
+// ses propres tâches locales et ne recevait jamais celles ajoutées ailleurs.
+async function loadAllTasks(){
   const raw=localStorage.getItem('tasks_ALL');
   allTasks=raw?JSON.parse(raw):[];
+  renderTodayTasks();
+  if(document.getElementById('page-taches').classList.contains('active')) renderAllTasks();
+
+  try{
+    const r=await fetch(APPS_SCRIPT_URL+'?action=getTaches');
+    const serverTasks=await r.json();
+    if(Array.isArray(serverTasks)){
+      allTasks=serverTasks;
+      localStorage.setItem('tasks_ALL',JSON.stringify(allTasks));
+      renderTodayTasks();
+      if(document.getElementById('page-taches').classList.contains('active')) renderAllTasks();
+    }
+  }catch(e){
+    console.error('Erreur chargement tâches', e);
+  }
 }
 
 function saveAllTasks(){
@@ -697,10 +752,11 @@ const EMOJIS=['🎬','📚','🛍️','🔨','🌿','✈️','🎵','💄','🍽
 function loadCats(){
   const stored=localStorage.getItem('proj_cats');
   cats=stored?JSON.parse(stored):JSON.parse(JSON.stringify(DEFAULT_CATS));
+  renderProjs();
   fetch(APPS_SCRIPT_URL+'?action=getProjets').then(r=>r.json()).then(d=>{
     if(d&&Array.isArray(d)&&d.length){cats=d;localStorage.setItem('proj_cats',JSON.stringify(cats));}
     renderProjs();
-  }).catch(()=>renderProjs());
+  }).catch(()=>{});
 }
 
 function saveCats(){
@@ -777,10 +833,32 @@ function renderAgenda(){
 }
 
 // ── TRACKER PAGE ──
-function renderTrackerPage(){
+// Récupère d'abord la semaine complète depuis Google Sheets (source de vérité),
+// met à jour le cache local jour par jour, puis dessine la grille.
+// Avant ce correctif, cette page ne lisait QUE le localStorage : un jour rempli
+// sur un autre appareil restait invisible ici tant qu'on n'avait pas cliqué
+// individuellement sur ce jour pour déclencher loadTrackers().
+async function renderTrackerPage(){
   const today=new Date();today.setHours(0,0,0,0);
   const ws=getWeekStart(today);
+  const we=new Date(ws); we.setDate(ws.getDate()+6);
   const days=['L','M','M','J','V','S','D'];
+
+  try{
+    const r=await fetch(APPS_SCRIPT_URL+'?action=getJournalRange&start='+dateKey(ws)+'&end='+dateKey(we));
+    const weekData=await r.json();
+    if(weekData){
+      Object.keys(weekData).forEach(d=>{
+        localStorage.setItem('tracker_'+d,JSON.stringify(weekData[d]));
+        journalDatesSet.add(d);
+      });
+      renderNavDays();
+      renderCal();
+    }
+  }catch(e){
+    console.error('Erreur chargement semaine trackers', e);
+  }
+
   [['sleepGrid','sleep'],['waterGrid','water'],['sportGrid','sport'],['lectureGrid','lecture']].forEach(([id,field])=>{
     const grid=document.getElementById(id);grid.innerHTML='';
     days.forEach(d=>{const h=document.createElement('div');h.className='wg-header';h.textContent=d;grid.appendChild(h);});
@@ -809,15 +887,23 @@ function addLongPress(el,cb){
 }
 
 // ── NAV ──
+// Chaque page recharge ses données depuis Google Sheets à chaque ouverture,
+// pour refléter ce qui a pu être ajouté/modifié depuis un autre appareil.
 function showPage(name,btn){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+name).classList.add('active');
   if(btn)btn.classList.add('active');
-  if(name==='trackers')renderTrackerPage();
+  if(name==='trackers') renderTrackerPage();
   if(name==='taches'){
     document.getElementById('taskDateInput').value=dateKey(sel);
-    renderAllTasks();
+    loadAllTasks();
+  }
+  if(name==='projets') loadCats();
+  if(name==='today'){
+    loadAllTasks();
+    loadAgenda();
+    loadTrackers();
   }
 }
 
@@ -835,8 +921,8 @@ renderWater();
 loadTrackers();
 loadAgenda();
 loadAllTasks();
-renderTodayTasks();
 loadCats();
+loadJournalDates();
 document.getElementById('taskDateInput').value=dateKey(sel);
 </script>
 </body>
