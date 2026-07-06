@@ -401,6 +401,23 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 // ── CONFIG ──
 const APPS_SCRIPT_URL='https://script.google.com/macros/s/AKfycbwZ4Yq5-eITZ85ZGQx_Pe2HMzJ6k3B6GwUjXUzCBiyNc-4SNELRK502YZcmw50jwIQB/exec';
 
+// Petit utilitaire : refait une tentative après un court délai si le premier
+// fetch échoue (ex: "Failed to fetch" quand plusieurs requêtes arrivent en
+// même temps sur l'Apps Script). Renvoie le JSON déjà parsé.
+async function fetchWithRetry(url, attempts=2, delayMs=700){
+  let lastErr;
+  for(let i=0;i<attempts;i++){
+    try{
+      const r=await fetch(url);
+      return await r.json();
+    }catch(e){
+      lastErr=e;
+      if(i<attempts-1) await new Promise(res=>setTimeout(res,delayMs));
+    }
+  }
+  throw lastErr;
+}
+
 // ── GARDE ──
 const GARDE_REF=new Date(2026,5,26);
 // Semaine calendaire : lundi → dimanche
@@ -506,8 +523,7 @@ function renderCal(){
 // Met à jour journalDatesSet + le cache local, puis rafraîchit les points affichés.
 async function loadJournalDates(){
   try{
-    const r=await fetch(APPS_SCRIPT_URL+'?action=getAllJournalDates');
-    const dates=await r.json();
+    const dates=await fetchWithRetry(APPS_SCRIPT_URL+'?action=getAllJournalDates');
     if(Array.isArray(dates)){
       journalDatesSet=new Set(dates);
       localStorage.setItem('journal_dates_cache',JSON.stringify(dates));
@@ -515,7 +531,7 @@ async function loadJournalDates(){
       renderCal();
     }
   }catch(e){
-    console.error('Erreur chargement dates journal', e);
+    console.error('Erreur chargement dates journal (cache local conservé)', e);
   }
 }
 
@@ -566,8 +582,8 @@ function loadTrackers(){
     if(d.lecture===true||d.lecture==='true'){lectureDone=true;document.getElementById('lectureBtn').textContent='✓';document.getElementById('lectureBtn').classList.add('done');}
   }
   // Sheets en arrière-plan (source de vérité, écrase le cache local si différent)
-  fetch(APPS_SCRIPT_URL+'?action=getJournal&date='+dateKey(sel))
-    .then(r=>r.json()).then(d=>{
+  fetchWithRetry(APPS_SCRIPT_URL+'?action=getJournal&date='+dateKey(sel))
+    .then(d=>{
       if(!d) return;
       if(d.sleep){document.getElementById('sleepSlider').value=d.sleep;document.getElementById('sleepVal').textContent=parseFloat(d.sleep)+'h';}
       if(d.water){waterCount=Number(d.water);renderWater();}
@@ -577,7 +593,7 @@ function loadTrackers(){
       journalDatesSet.add(dateKey(sel));
       renderNavDays();
       renderCal();
-    }).catch(()=>{});
+    }).catch(e=>console.error('Erreur chargement trackers (cache local conservé)', e));
 }
 
 // ── TÂCHES (clé: tasks_ALL — toutes les tâches dans un seul tableau) ──
@@ -596,8 +612,7 @@ async function loadAllTasks(){
   if(document.getElementById('page-taches').classList.contains('active')) renderAllTasks();
 
   try{
-    const r=await fetch(APPS_SCRIPT_URL+'?action=getTaches');
-    const serverTasks=await r.json();
+    const serverTasks=await fetchWithRetry(APPS_SCRIPT_URL+'?action=getTaches');
     if(Array.isArray(serverTasks)){
       allTasks=serverTasks;
       localStorage.setItem('tasks_ALL',JSON.stringify(allTasks));
@@ -605,7 +620,7 @@ async function loadAllTasks(){
       if(document.getElementById('page-taches').classList.contains('active')) renderAllTasks();
     }
   }catch(e){
-    console.error('Erreur chargement tâches', e);
+    console.error('Erreur chargement tâches (données locales conservées)', e);
   }
 }
 
@@ -753,10 +768,10 @@ function loadCats(){
   const stored=localStorage.getItem('proj_cats');
   cats=stored?JSON.parse(stored):JSON.parse(JSON.stringify(DEFAULT_CATS));
   renderProjs();
-  fetch(APPS_SCRIPT_URL+'?action=getProjets').then(r=>r.json()).then(d=>{
+  fetchWithRetry(APPS_SCRIPT_URL+'?action=getProjets').then(d=>{
     if(d&&Array.isArray(d)&&d.length){cats=d;localStorage.setItem('proj_cats',JSON.stringify(cats));}
     renderProjs();
-  }).catch(()=>{});
+  }).catch(e=>console.error('Erreur chargement projets (cache local conservé)', e));
 }
 
 function saveCats(){
@@ -814,9 +829,8 @@ async function loadAgenda(){
   const container=document.getElementById('agendaList');
   if(container)container.innerHTML='<div style="font-size:13px;color:var(--text-xlight);">Chargement…</div>';
   try{
-    const r=await fetch(APPS_SCRIPT_URL+'?action=getAgenda&date='+dateKey(sel));
-    agendaEvents=await r.json()||[];
-  }catch(e){agendaEvents=[];}
+    agendaEvents=await fetchWithRetry(APPS_SCRIPT_URL+'?action=getAgenda&date='+dateKey(sel))||[];
+  }catch(e){agendaEvents=[];console.error('Erreur chargement agenda', e);}
   renderAgenda();
 }
 function renderAgenda(){
@@ -845,8 +859,7 @@ async function renderTrackerPage(){
   const days=['L','M','M','J','V','S','D'];
 
   try{
-    const r=await fetch(APPS_SCRIPT_URL+'?action=getJournalRange&start='+dateKey(ws)+'&end='+dateKey(we));
-    const weekData=await r.json();
+    const weekData=await fetchWithRetry(APPS_SCRIPT_URL+'?action=getJournalRange&start='+dateKey(ws)+'&end='+dateKey(we));
     if(weekData){
       Object.keys(weekData).forEach(d=>{
         localStorage.setItem('tracker_'+d,JSON.stringify(weekData[d]));
@@ -856,7 +869,7 @@ async function renderTrackerPage(){
       renderCal();
     }
   }catch(e){
-    console.error('Erreur chargement semaine trackers', e);
+    console.error('Erreur chargement semaine trackers (cache local conservé)', e);
   }
 
   [['sleepGrid','sleep'],['waterGrid','water'],['sportGrid','sport'],['lectureGrid','lecture']].forEach(([id,field])=>{
@@ -901,9 +914,9 @@ function showPage(name,btn){
   }
   if(name==='projets') loadCats();
   if(name==='today'){
-    loadAllTasks();
-    loadAgenda();
     loadTrackers();
+    setTimeout(loadAgenda, 150);
+    setTimeout(loadAllTasks, 300);
   }
 }
 
@@ -914,16 +927,20 @@ function closeModal(id){document.getElementById(id).classList.remove('open');}
 function showToast(msg){const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2000);}
 
 // ── INIT ──
+// On étale légèrement les appels réseau au démarrage : envoyer 4 requêtes
+// simultanées vers le même Apps Script peut le faire échouer ("Failed to
+// fetch"). Un petit décalage suffit à éviter la rafale.
 renderHeader();
 renderNavDays();
 renderCal();
 renderWater();
-loadTrackers();
-loadAgenda();
-loadAllTasks();
-loadCats();
-loadJournalDates();
 document.getElementById('taskDateInput').value=dateKey(sel);
+
+loadTrackers();
+setTimeout(loadAgenda, 150);
+setTimeout(loadAllTasks, 300);
+setTimeout(loadCats, 450);
+setTimeout(loadJournalDates, 600);
 </script>
 </body>
 </html>
