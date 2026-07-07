@@ -419,6 +419,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
   <div class="modal" onclick="event.stopPropagation()">
     <div class="modal-title">Modifier la tâche</div>
     <input class="modal-input" id="taskEditInput" placeholder="Texte…">
+    <div class="date-picker-row" style="margin-bottom:12px;">
+      <span class="date-picker-label">Pour le :</span>
+      <input type="date" class="date-picker-input" id="taskEditDateInput">
+    </div>
     <div class="modal-prio-row">
       <span class="add-prio-label">Priorité :</span>
       <div class="prio-dot red" id="ePrioRed" onclick="selectEditPrio('red')"></div>
@@ -813,12 +817,14 @@ function createTaskEl(t,origIdx){
 function openTaskModal(idx){
   editTaskIdx=idx; editPrio=allTasks[idx].prio;
   document.getElementById('taskEditInput').value=allTasks[idx].text;
+  document.getElementById('taskEditDateInput').value=allTasks[idx].date||dateKey(sel);
   selectEditPrio(editPrio);
   document.getElementById('taskModal').classList.add('open');
 }
 function saveTaskEdit(){
   const v=document.getElementById('taskEditInput').value.trim(); if(!v)return;
-  allTasks[editTaskIdx]={...allTasks[editTaskIdx],text:v,prio:editPrio};
+  const newDate=document.getElementById('taskEditDateInput').value||allTasks[editTaskIdx].date;
+  allTasks[editTaskIdx]={...allTasks[editTaskIdx],text:v,prio:editPrio,date:newDate};
   closeModal('taskModal'); saveAllTasks(); renderAllTasks(); renderTodayTasks(); showToast('Modifié ✓');
 }
 function deleteTask(){
