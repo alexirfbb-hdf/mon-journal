@@ -263,7 +263,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
       <div id="agendaList"><div style="font-size:13px;color:var(--text-xlight);">Chargement…</div></div>
     </div>
     <div class="card">
-      <div class="card-label">🔴 Tâches urgentes <span class="hint">appui long = modifier</span></div>
+      <div class="card-label">✅ Tâches du jour <span class="hint">appui long = modifier</span></div>
       <div class="tasks-list" id="tasksListToday"></div>
       <div style="margin-top:10px;text-align:center;">
         <button onclick="showPage('taches',document.querySelector('[data-page=taches]'))" style="background:none;border:none;font-family:'DM Sans',sans-serif;font-size:12px;color:var(--text-xlight);cursor:pointer;text-decoration:underline;">Voir toutes les tâches →</button>
@@ -769,19 +769,19 @@ function renderAllTasks(){
 function renderTodayTasks(){
   const container=document.getElementById('tasksListToday'); container.innerHTML='';
   const todayKey=dateKey(sel);
-  
-  // Tâches urgentes du jour + tâches non terminées des jours précédents
+  const prioOrder={red:0,orange:1,green:2};
+
+  // Toutes les tâches non terminées du jour + celles non terminées des jours précédents (reportées),
+  // quelle que soit leur priorité — triées urgentes d'abord.
   const urgent=allTasks.filter(t=>{
     if(t.done) return false;
-    if(t.prio!=='red') return false;
     if(t.date===todayKey) return true;
-    // Reporter si la date est passée
     if(t.date && t.date < todayKey) return true;
     return false;
-  });
+  }).sort((a,b)=>(prioOrder[a.prio]??3)-(prioOrder[b.prio]??3));
 
   if(urgent.length===0){
-    container.innerHTML='<div style="font-size:13px;color:var(--text-xlight);padding:4px 0;">Aucune tâche urgente aujourd\'hui 🌸</div>';
+    container.innerHTML='<div style="font-size:13px;color:var(--text-xlight);padding:4px 0;">Aucune tâche aujourd\'hui 🌸</div>';
     return;
   }
   urgent.forEach(t=>{
