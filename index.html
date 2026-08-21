@@ -147,6 +147,11 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;heigh
 .filter-btn.green.active{background:var(--green);border-color:var(--green);}
 .tasks-section-title{font-size:12px;font-weight:500;color:var(--text-light);margin:14px 0 8px;display:flex;align-items:center;gap:6px;}
 .empty-state{text-align:center;padding:30px 0;color:var(--text-xlight);font-size:13px;}
+.done-tasks-details{margin-top:18px;border-top:1px solid var(--sand-dark);padding-top:10px;}
+.done-tasks-summary{list-style:none;cursor:pointer;font-size:12px;font-weight:500;color:var(--text-light);padding:4px 0;display:flex;align-items:center;gap:6px;user-select:none;}
+.done-tasks-summary::-webkit-details-marker{display:none;}
+.done-tasks-summary::before{content:'▶';font-size:9px;color:var(--text-xlight);transition:transform 0.2s;display:inline-block;}
+.done-tasks-details[open] .done-tasks-summary::before{transform:rotate(90deg);}
 
 /* TRACKER PAGE */
 .week-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-top:4px;}
@@ -674,7 +679,7 @@ function loadTrackers(){
 
 // ── TÂCHES (clé: tasks_ALL — toutes les tâches dans un seul tableau) ──
 let allTasks=[];
-let editTaskIdx=null,addPrio='red',editPrio='red',currentFilter='all';
+let editTaskIdx=null,addPrio='red',editPrio='red',currentFilter='all',doneSectionOpen=false;
 const prioLabels={red:'Urgent',orange:'Important',green:'Peut attendre'};
 
 // Charge les tâches : affichage immédiat depuis le cache local, puis la version
@@ -747,27 +752,60 @@ function renderAllTasks(){
     container.innerHTML='<div class="empty-state">Aucune tâche ici 🌿</div>';
     return;
   }
-  // Grouper par date
-  const groups={};
-  filtered.forEach((t,origIdx)=>{
-    const d=t.date||dateKey(sel);
-    if(!groups[d])groups[d]=[];
-    groups[d].push({...t,origIdx:allTasks.indexOf(t)});
-  });
-  Object.keys(groups).sort().forEach(date=>{
-    const title=document.createElement('div');
-    title.className='tasks-section-title';
-    const d=new Date(date+'T12:00:00');
-    title.textContent=DF[d.getDay()]+' '+d.getDate()+' '+MF[d.getMonth()].toLowerCase();
-    container.appendChild(title);
-    const list=document.createElement('div');
-    list.className='tasks-list';
-    groups[date].forEach(t=>{
-      const div=createTaskEl(t,t.origIdx);
-      list.appendChild(div);
+
+  const notDone=filtered.filter(t=>!t.done);
+  const done=filtered.filter(t=>t.done);
+
+  // Tâches non terminées, groupées par date
+  if(notDone.length===0){
+    const empty=document.createElement('div');
+    empty.className='empty-state';
+    empty.textContent='Tout est fait ✓';
+    container.appendChild(empty);
+  } else {
+    const groups={};
+    notDone.forEach(t=>{
+      const d=t.date||dateKey(sel);
+      if(!groups[d])groups[d]=[];
+      groups[d].push({...t,origIdx:allTasks.indexOf(t)});
     });
-    container.appendChild(list);
-  });
+    Object.keys(groups).sort().forEach(date=>{
+      const title=document.createElement('div');
+      title.className='tasks-section-title';
+      const d=new Date(date+'T12:00:00');
+      title.textContent=DF[d.getDay()]+' '+d.getDate()+' '+MF[d.getMonth()].toLowerCase();
+      container.appendChild(title);
+      const list=document.createElement('div');
+      list.className='tasks-list';
+      groups[date].forEach(t=>{
+        const div=createTaskEl(t,t.origIdx);
+        list.appendChild(div);
+      });
+      container.appendChild(list);
+    });
+  }
+
+  // Tâches terminées, dans un unique menu dépliant (fermé par défaut)
+  if(done.length>0){
+    const details=document.createElement('details');
+    details.className='done-tasks-details';
+    if(doneSectionOpen) details.open=true;
+    details.addEventListener('toggle',()=>{ doneSectionOpen=details.open; });
+    const summary=document.createElement('summary');
+    summary.className='done-tasks-summary';
+    summary.textContent='✅ Tâches terminées ('+done.length+')';
+    details.appendChild(summary);
+    const doneList=document.createElement('div');
+    doneList.className='tasks-list';
+    doneList.style.marginTop='10px';
+    done.slice().sort((a,b)=>(b.date||'').localeCompare(a.date||'')).forEach(t=>{
+      const origIdx=allTasks.indexOf(t);
+      const div=createTaskEl(t,origIdx);
+      doneList.appendChild(div);
+    });
+    details.appendChild(doneList);
+    container.appendChild(details);
+  }
 }
 
 function renderTodayTasks(){
